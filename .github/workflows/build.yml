@@ -1,34 +1,76 @@
 name: Build Veilborn Mod
 
 on:
-  push:
   workflow_dispatch:
+  push:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download files
+      - name: Checkout files
         uses: actions/checkout@v4
 
-      - name: Java 17
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.6'
+      - name: Install Gradle 8.6
+        run: |
+          curl -L -o gradle-8.6-bin.zip https://services.gradle.org/distributions/gradle-8.6-bin.zip
+          unzip -q gradle-8.6-bin.zip
+          echo "$GITHUB_WORKSPACE/gradle-8.6/bin" >> $GITHUB_PATH
 
-      - name: Build Mod
-        working-directory: veilborn_the_island
-        run: gradle build
+      - name: Extract ZIP
+        run: |
+          unzip -q veilborn_the_island_fabric_1.20.1.zip -d mod
 
-      - name: Get JAR
+      - name: Find project folder
+        run: |
+          PROJECT=$(dirname "$(find mod -name build.gradle | head -n 1)")
+          echo "PROJECT=$PROJECT" >> $GITHUB_ENV
+          echo "Found project: $PROJECT"
+
+      - name: Fix Fabric Loom repo/version
+        run: |
+          python3 - <<'PY'
+          import os
+          import pathlib
+
+          project = pathlib.Path(os.environ["PROJECT"])
+          build = project / "build.gradle"
+          settings = project / "settings.gradle"
+
+          if build.exists():
+              txt = build.read_text(encoding="utf-8")
+              txt = txt.replace("1.6-SNAPSHOT", "1.6.12")
+              build.write_text(txt, encoding="utf-8")
+
+          if settings.exists():
+              txt = settings.read_text(encoding="utf-8")
+              if "maven.fabricmc.net" not in txt:
+                  prefix = """pluginManagement {
+              repositories {
+                  maven { url = uri("https://maven.fabricmc.net/") }
+                  gradlePluginPortal()
+                  mavenCentral()
+              }
+          }
+
+          """
+                  settings.write_text(prefix + txt, encoding="utf-8")
+          PY
+
+      - name: Build mod
+        run: |
+          cd "$PROJECT"
+          gradle build --no-daemon
+
+      - name: Upload jar
         uses: actions/upload-artifact@v4
         with:
-          name: Veilborn-Mod-JAR
-          path: veilborn_the_island/build/libs/*.jar
+          name: Veilborn-JAR
+          path: ${{ env.PROJECT }}/build/libs/*.jar
