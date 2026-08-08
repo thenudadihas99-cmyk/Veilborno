@@ -29,11 +29,63 @@ jobs:
 
       - name: Find project
         run: |
-          find mod -name build.gradle -exec dirname {} \;
-
-      - name: Build
-        run: |
           PROJECT=$(dirname "$(find mod -name build.gradle | head -1)")
+          echo "PROJECT=$PROJECT" >> $GITHUB_ENV
+          echo "Found project at: $PROJECT"
+
+      - name: Fix Fabric Loom
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+
+          project = os.environ["PROJECT"]
+
+          build = os.path.join(project, "build.gradle")
+          settings = os.path.join(project, "settings.gradle")
+
+          # Change unavailable snapshot Loom to stable Loom
+          with open(build, "r", encoding="utf-8") as f:
+              text = f.read()
+
+          text = text.replace(
+              "id 'fabric-loom' version '1.6-SNAPSHOT'",
+              "id 'fabric-loom' version '1.6.12'"
+          )
+
+          text = text.replace(
+              'id "fabric-loom" version "1.6-SNAPSHOT"',
+              'id "fabric-loom" version "1.6.12"'
+          )
+
+          with open(build, "w", encoding="utf-8") as f:
+              f.write(text)
+
+          # Add Fabric Maven repository for the Loom plugin
+          if os.path.exists(settings):
+              with open(settings, "r", encoding="utf-8") as f:
+                  s = f.read()
+
+              if "maven.fabricmc.net" not in s:
+                  repo = '''pluginManagement {
+              repositories {
+                  maven { url = uri("https://maven.fabricmc.net/") }
+                  gradlePluginPortal()
+                  mavenCentral()
+              }
+          }
+
+          '''
+                  s = repo + s
+
+                  with open(settings, "w", encoding="utf-8") as f:
+                      f.write(s)
+
+          print("Fabric Loom fix applied.")
+          PY
+
+      - name: Build Mod
+        run: |
           cd "$PROJECT"
           gradle build --no-daemon
 
@@ -41,4 +93,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Veilborn-JAR
-          path: mod/**/build/libs/*.jar
+          path: "${{ env.PROJECT }}/build/libs/*.jar"
