@@ -1,8 +1,8 @@
 name: Build Veilborn Mod
 
 on:
-  workflow_dispatch:
   push:
+  workflow_dispatch:
 
 jobs:
   build:
@@ -18,79 +18,17 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Gradle
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.5'
-
-      - name: Extract ZIP
-        run: |
-          unzip -q veilborn_the_island_fabric_1.20.1.zip -d mod
-
-      - name: Find project
-        run: |
-          PROJECT=$(dirname "$(find mod -name build.gradle | head -1)")
-          echo "PROJECT=$PROJECT" >> $GITHUB_ENV
-          echo "Found project at: $PROJECT"
-
-      - name: Fix Fabric Loom
-        run: |
-          python3 - <<'PY'
-          import os
-          import re
-
-          project = os.environ["PROJECT"]
-
-          build = os.path.join(project, "build.gradle")
-          settings = os.path.join(project, "settings.gradle")
-
-          # Change unavailable snapshot Loom to stable Loom
-          with open(build, "r", encoding="utf-8") as f:
-              text = f.read()
-
-          text = text.replace(
-              "id 'fabric-loom' version '1.6-SNAPSHOT'",
-              "id 'fabric-loom' version '1.6.12'"
-          )
-
-          text = text.replace(
-              'id "fabric-loom" version "1.6-SNAPSHOT"',
-              'id "fabric-loom" version "1.6.12"'
-          )
-
-          with open(build, "w", encoding="utf-8") as f:
-              f.write(text)
-
-          # Add Fabric Maven repository for the Loom plugin
-          if os.path.exists(settings):
-              with open(settings, "r", encoding="utf-8") as f:
-                  s = f.read()
-
-              if "maven.fabricmc.net" not in s:
-                  repo = '''pluginManagement {
-              repositories {
-                  maven { url = uri("https://maven.fabricmc.net/") }
-                  gradlePluginPortal()
-                  mavenCentral()
-              }
-          }
-
-          '''
-                  s = repo + s
-
-                  with open(settings, "w", encoding="utf-8") as f:
-                      f.write(s)
-
-          print("Fabric Loom fix applied.")
-          PY
+          gradle-version: '8.6'
 
       - name: Build Mod
-        run: |
-          cd "$PROJECT"
-          gradle build --no-daemon
+        working-directory: veilborn_the_island
+        run: gradle build
 
       - name: Get JAR
         uses: actions/upload-artifact@v4
         with:
-          name: Veilborn-JAR
-          path: "${{ env.PROJECT }}/build/libs/*.jar"
+          name: Veilborn-Mod-JAR
+          path: veilborn_the_island/build/libs/*.jar
